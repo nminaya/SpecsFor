@@ -1,6 +1,7 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 
-namespace SpecsFor.Lamar;
+namespace SpecsFor.Core.MoqUtilities;
 
 public class MoqFactory
 {

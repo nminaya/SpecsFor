@@ -1,4 +1,6 @@
-﻿namespace SpecsFor.Lamar;
+﻿using SpecsFor.Core.MoqUtilities;
+
+namespace SpecsFor.Lamar;
 
 public class MoqServiceLocator
 {

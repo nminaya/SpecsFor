@@ -1,4 +1,5 @@
 using System;
+using SpecsFor.Core.MoqUtilities;
 using StructureMap.AutoMocking;
 
 namespace SpecsFor.StructureMap
