@@ -1,38 +1,35 @@
-﻿using Lamar;
+﻿using JasperFx.Core.Reflection;
+using Lamar;
+using Lamar.IoC.Instances;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
 using System.Reflection;
 
 namespace SpecsFor.Lamar;
 
 public class SpecsForAutoMocker<TSut> where TSut : class
 {
+    private readonly MoqServiceLocator _locator;
+
     public Container Container { get; protected set; }
 
     private readonly HashSet<Type> _registeredTypes = new();
 
     public T Get<T>() where T : class
     {
-        var instance = Container.TryGetInstance<T>();
-
-        if (instance != null)
-        {
-            return instance;
-        }
-
-        var mockedInstance = Mock.Of<T>();
-
-        Container.Configure(x => x.AddTransient(typeof(T), _ => mockedInstance));
-
-        return mockedInstance;
+        return Container.GetInstance<T>();
     }
 
     public TSut ClassUnderTest => Container.GetInstance<TSut>();
 
     public SpecsForAutoMocker()
     {
+        _locator = new MoqServiceLocator();
+
         var registry = new ServiceRegistry();
         RegisterType(typeof(TSut), registry);
+
+        registry.Policies.OnMissingFamily(new AutoMockingFamilyPolicy(_locator));
+
         Container = new Container(registry);
     }
 
@@ -45,22 +42,24 @@ public class SpecsForAutoMocker<TSut> where TSut : class
 
         _registeredTypes.Add(type);
 
-        if (type.IsInterface || type.IsAbstract)
+        if (type.IsInterface || type.IsAbstract || type.IsPrimitive || type == typeof(string))
         {
-            var mockType = typeof(Mock<>).MakeGenericType(type);
-            var mockInstance = Activator.CreateInstance(mockType)!;
-
-            var mockObject = mockType
-                .GetProperty("Object",
-                    BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)!
-                .GetValue(mockInstance);
-            registry.AddTransient(type, _ => mockObject);
+            registry.AddScoped(type, _ => _locator.Service(type));
             return;
         }
 
-        if (type.IsPrimitive || type == typeof(string))
+        if (type.IsArray)
         {
-            registry.AddTransient(type, _ => Activator.CreateInstance(type));
+            registry.AddScoped(type, _ => Array.CreateInstance(type, 0));
+            return;
+        }
+
+        var parameterLessConstructor = type.GetConstructor(Type.EmptyTypes);
+
+        if (parameterLessConstructor != null)
+        {
+            // If the type has a parameterless constructor, register it directly
+            registry.For(type).Use(type);
             return;
         }
 
@@ -82,5 +81,37 @@ public class SpecsForAutoMocker<TSut> where TSut : class
         }
 
         registry.For(type).Use(type);
+    }
+
+    private class AutoMockingFamilyPolicy : IFamilyPolicy
+    {
+        private readonly MoqServiceLocator _locator;
+
+        public AutoMockingFamilyPolicy(MoqServiceLocator locator)
+        {
+            _locator = locator;
+        }
+
+        public ServiceFamily Build(Type type, ServiceGraph serviceGraph)
+        {
+            if (type.IsConcrete())
+            {
+                return null;
+            }
+
+            var service = _locator.Service(type);
+
+            if (service == null)
+            {
+                return null;
+            }
+
+            var family = new ServiceFamily(type, Array.Empty<IDecoratorPolicy>());
+            var instance = new ObjectInstance(type, service);
+
+            family.Append(new Instance[] { instance }, Array.Empty<IDecoratorPolicy>());
+
+            return family;
+        }
     }
 }
