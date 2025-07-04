@@ -26,10 +26,10 @@ public class SpecsForAutoMocker<TSut> where TSut : class
         _locator = new MoqServiceLocator();
 
         var registry = new ServiceRegistry();
+
         RegisterType(typeof(TSut), registry);
 
         registry.Policies.OnMissingFamily(new AutoMockingFamilyPolicy(_locator));
-
         Container = new Container(registry);
     }
 
@@ -42,7 +42,11 @@ public class SpecsForAutoMocker<TSut> where TSut : class
 
         _registeredTypes.Add(type);
 
-        if (type.IsInterface || type.IsAbstract || type.IsPrimitive || type == typeof(string))
+        if (type.IsInterface
+            || type.IsAbstract
+            || type.IsPrimitive
+            || type == typeof(string)
+            || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>)))
         {
             registry.AddScoped(type, _ => _locator.Service(type));
             return;
@@ -59,7 +63,7 @@ public class SpecsForAutoMocker<TSut> where TSut : class
         if (parameterLessConstructor != null)
         {
             // If the type has a parameterless constructor, register it directly
-            registry.For(type).Use(type);
+            registry.For(type).Use(type).Scoped();
             return;
         }
 
@@ -80,7 +84,7 @@ public class SpecsForAutoMocker<TSut> where TSut : class
             RegisterType(param.ParameterType, registry);
         }
 
-        registry.For(type).Use(type);
+        registry.For(type).Use(type).Scoped();
     }
 
     private class AutoMockingFamilyPolicy : IFamilyPolicy
